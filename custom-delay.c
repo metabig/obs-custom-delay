@@ -2,7 +2,7 @@
 #include <util/circlebuf.h>
 #include <util/dstr.h>
 #include <util/base.h>
-#include "dynamic-delay.h"
+#include "custom-delay.h"
 #include "easing.h"
 #include <stdio.h>
 
@@ -11,18 +11,12 @@ struct frame {
 	uint64_t ts;
 };
 
-struct dynamic_delay_info {
+struct custom_delay_info {
 	obs_source_t *source;
 	struct circlebuf frames;
 	obs_hotkey_id skip_begin_hotkey;
 	obs_hotkey_id skip_end_hotkey;
-	obs_hotkey_id forward_hotkey;
-	obs_hotkey_id forward_slow_hotkey;
-	obs_hotkey_id forward_fast_hotkey;
-	obs_hotkey_id backward_hotkey;
-	obs_hotkey_id backward_slow_hotkey;
-	obs_hotkey_id backward_fast_hotkey;
-	obs_hotkey_id pause_hotkey;
+
 	bool hotkeys_loaded;
 	double max_duration;
 	double speed;
@@ -64,7 +58,7 @@ static void replace_text(struct dstr *str, size_t pos, size_t len,
 	dstr_free(&back);
 }
 
-static void dynamic_delay_text(struct dynamic_delay_info *c)
+static void custom_delay_text(struct custom_delay_info *c)
 {
 	if (!c->text_source_name || !strlen(c->text_source_name) ||
 	    !c->text_format)
@@ -107,13 +101,13 @@ static void dynamic_delay_text(struct dynamic_delay_info *c)
 	obs_source_release(s);
 }
 
-static const char *dynamic_delay_get_name(void *type_data)
+static const char *custom_delay_get_name(void *type_data)
 {
 	UNUSED_PARAMETER(type_data);
 	return obs_module_text("CustomDelay");
 }
 
-static void free_textures(struct dynamic_delay_info *f)
+static void free_textures(struct custom_delay_info *f)
 {
 
 	while (f->frames.size) {
@@ -126,9 +120,9 @@ static void free_textures(struct dynamic_delay_info *f)
 	circlebuf_free(&f->frames);
 }
 
-static void dynamic_delay_update(void *data, obs_data_t *settings)
+static void custom_delay_update(void *data, obs_data_t *settings)
 {
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 	double duration = obs_data_get_double(settings, S_DURATION);
 	if (duration < d->max_duration) {
 		free_textures(d);
@@ -167,21 +161,21 @@ static void dynamic_delay_update(void *data, obs_data_t *settings)
 	}
 }
 
-static void *dynamic_delay_create(obs_data_t *settings, obs_source_t *source)
+static void *custom_delay_create(obs_data_t *settings, obs_source_t *source)
 {
-	struct dynamic_delay_info *d =
-		bzalloc(sizeof(struct dynamic_delay_info));
+	struct custom_delay_info *d =
+		bzalloc(sizeof(struct custom_delay_info));
 	d->source = source;
 	d->speed = 1.0;
 	d->target_speed = 1.0;
 	d->start_speed = 1.0;
-	dynamic_delay_update(d, settings);
+	custom_delay_update(d, settings);
 	return d;
 }
 
-static void dynamic_delay_destroy(void *data)
+static void custom_delay_destroy(void *data)
 {
-	struct dynamic_delay_info *c = data;
+	struct custom_delay_info *c = data;
 	obs_hotkey_unregister(c->skip_begin_hotkey);
 	obs_hotkey_unregister(c->skip_end_hotkey);
 	free_textures(c);
@@ -192,12 +186,12 @@ static void dynamic_delay_destroy(void *data)
 	bfree(c);
 }
 
-void dynamic_delay_skip_begin_hotkey(void *data, obs_hotkey_id id,
+void custom_delay_skip_begin_hotkey(void *data, obs_hotkey_id id,
 				     obs_hotkey_t *hotkey, bool pressed)
 {
 	if (!pressed)
 		return;
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 	if (d->start_speed < 1.0 || d->speed < 1.0) {
 		d->start_speed = 1.0;
 		d->target_speed = 1.0;
@@ -206,12 +200,12 @@ void dynamic_delay_skip_begin_hotkey(void *data, obs_hotkey_id id,
 	d->time_diff = d->max_duration;
 }
 
-void dynamic_delay_skip_end_hotkey(void *data, obs_hotkey_id id,
+void custom_delay_skip_end_hotkey(void *data, obs_hotkey_id id,
 				   obs_hotkey_t *hotkey, bool pressed)
 {
 	if (!pressed)
 		return;
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 	if (d->start_speed > 1.0 || d->speed > 1.0) {
 		d->start_speed = 1.0;
 		d->target_speed = 1.0;
@@ -220,28 +214,28 @@ void dynamic_delay_skip_end_hotkey(void *data, obs_hotkey_id id,
 	d->time_diff = 0;
 }
 
-static void dynamic_delay_load_hotkeys(void *data)
+static void custom_delay_load_hotkeys(void *data)
 {
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 	obs_source_t *parent = obs_filter_get_parent(d->source);
 	if (parent) {
 		d->skip_begin_hotkey = obs_hotkey_register_source(
 			parent, "skip_begin", obs_module_text("SkipBegin"),
-			dynamic_delay_skip_begin_hotkey, data);
+			custom_delay_skip_begin_hotkey, data);
 		d->skip_end_hotkey = obs_hotkey_register_source(
 			parent, "skip_end", obs_module_text("SkipEnd"),
-			dynamic_delay_skip_end_hotkey, data);
+			custom_delay_skip_end_hotkey, data);
 		d->hotkeys_loaded = true;
 	}
 }
 
-static void dynamic_delay_load(void *data, obs_data_t *settings)
+static void custom_delay_load(void *data, obs_data_t *settings)
 {
-	dynamic_delay_load_hotkeys(data);
-	dynamic_delay_update(data, settings);
+	custom_delay_load_hotkeys(data);
+	custom_delay_update(data, settings);
 }
 
-static void draw_frame(struct dynamic_delay_info *d)
+static void draw_frame(struct custom_delay_info *d)
 {
 	struct frame *frame = NULL;
 	if (!d->frames.size)
@@ -277,9 +271,9 @@ static void draw_frame(struct dynamic_delay_info *d)
 	}
 }
 
-static void dynamic_delay_video_render(void *data, gs_effect_t *effect)
+static void custom_delay_video_render(void *data, gs_effect_t *effect)
 {
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 	obs_source_t *target = obs_filter_get_target(d->source);
 	obs_source_t *parent = obs_filter_get_parent(d->source);
 
@@ -355,7 +349,7 @@ static void dynamic_delay_video_render(void *data, gs_effect_t *effect)
 	d->processed_frame = true;
 }
 
-static bool dynamic_delay_text_source_modified(obs_properties_t *props,
+static bool custom_delay_text_source_modified(obs_properties_t *props,
 					       obs_property_t *property,
 					       obs_data_t *data)
 {
@@ -369,95 +363,22 @@ static bool dynamic_delay_text_source_modified(obs_properties_t *props,
 	return true;
 }
 
-static obs_properties_t *dynamic_delay_properties(void *data)
+static obs_properties_t *custom_delay_properties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
 	obs_property_t *p = obs_properties_add_float(
 		ppts, S_DURATION, obs_module_text("Duration"), 0.0, 10000.0,
 		1.0);
 	obs_property_float_set_suffix(p, "s");
-
-	p = obs_properties_add_list(ppts, S_EASING, obs_module_text("Easing"),
-				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-
-	obs_property_list_add_int(p, obs_module_text("EasingFunction.Linear"),
-				  EASING_LINEAR);
-	obs_property_list_add_int(p,
-				  obs_module_text("EasingFunction.Quadratic"),
-				  EASING_QUADRATIC);
-	obs_property_list_add_int(p, obs_module_text("EasingFunction.Cubic"),
-				  EASING_CUBIC);
-	obs_property_list_add_int(p, obs_module_text("EasingFunction.Quartic"),
-				  EASING_QUARTIC);
-	obs_property_list_add_int(p, obs_module_text("EasingFunction.Quintic"),
-				  EASING_QUINTIC);
-	obs_property_list_add_int(p, obs_module_text("EasingFunction.Sine"),
-				  EASING_SINE);
-	obs_property_list_add_int(p, obs_module_text("EasingFunction.Circular"),
-				  EASING_CIRCULAR);
-	obs_property_list_add_int(p,
-				  obs_module_text("EasingFunction.Exponential"),
-				  EASING_EXPONENTIAL);
-	obs_property_list_add_int(p, obs_module_text("EasingFunction.Elastic"),
-				  EASING_ELASTIC);
-	obs_property_list_add_int(p, obs_module_text("EasingFunction.Bounce"),
-				  EASING_BOUNCE);
-	obs_property_list_add_int(p, obs_module_text("EasingFunction.Back"),
-				  EASING_BACK);
-
-	p = obs_properties_add_float(ppts, S_EASING_DURATION,
-				     obs_module_text("EasingDuration"), 0.0,
-				     10.0, 1.0);
-	obs_property_float_set_suffix(p, "s");
-
-	p = obs_properties_add_float_slider(ppts, S_SLOW_FORWARD,
-					    obs_module_text("SlowForward"), 0.1,
-					    99.9, 1.0);
-	obs_property_float_set_suffix(p, "%");
-
-	p = obs_properties_add_float_slider(ppts, S_FAST_FORWARD,
-					    obs_module_text("FastForward"),
-					    100.1, 1000.0, 1.0);
-	obs_property_float_set_suffix(p, "%");
-
-	p = obs_properties_add_float_slider(ppts, S_SLOW_BACKWARD,
-					    obs_module_text("SlowBackward"),
-					    -99.9, -0.1, 1.0);
-	obs_property_float_set_suffix(p, "%");
-
-	p = obs_properties_add_float_slider(ppts, S_FAST_BACKWARD,
-					    obs_module_text("FastBackward"),
-					    -1000.0, -100.1, 1.0);
-	obs_property_float_set_suffix(p, "%");
-
-	p = obs_properties_add_text(ppts, S_TEXT_SOURCE,
-				    obs_module_text("TextSource"),
-				    OBS_TEXT_DEFAULT);
-	obs_property_set_modified_callback(p,
-					   dynamic_delay_text_source_modified);
-
-	obs_properties_add_text(ppts, S_TEXT_FORMAT,
-				obs_module_text("TextFormat"),
-				OBS_TEXT_MULTILINE);
 	return ppts;
 }
 
-void dynamic_delay_defaults(obs_data_t *settings)
+void custom_delay_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_double(settings, S_DURATION, 5.0);
-	obs_data_set_default_double(settings, S_EASING_DURATION, 1.0);
-	obs_data_set_default_int(settings, S_EASING, EASING_CUBIC);
-	obs_data_set_default_double(settings, S_SLOW_FORWARD, 50.0);
-	obs_data_set_default_double(settings, S_FAST_FORWARD, 200.0);
-	obs_data_set_default_double(settings, S_SLOW_BACKWARD, -50.0);
-	obs_data_set_default_double(settings, S_FAST_BACKWARD, -200.0);
-
-	obs_data_set_default_string(
-		settings, S_TEXT_FORMAT,
-		"Speed: %SPEED%%\nTarget speed: %TARGET%\nTime diff: %TIME% seconds");
 }
 
-static inline void check_size(struct dynamic_delay_info *d)
+static inline void check_size(struct custom_delay_info *d)
 {
 	obs_source_t *target = obs_filter_get_target(d->source);
 
@@ -479,11 +400,11 @@ static inline void check_size(struct dynamic_delay_info *d)
 	}
 }
 
-static void dynamic_delay_tick(void *data, float t)
+static void custom_delay_tick(void *data, float t)
 {
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 	if (!d->hotkeys_loaded)
-		dynamic_delay_load_hotkeys(data);
+		custom_delay_load_hotkeys(data);
 	d->processed_frame = false;
 	if (d->speed != d->target_speed) {
 		const uint64_t ts = obs_get_video_frame_time();
@@ -542,52 +463,52 @@ static void dynamic_delay_tick(void *data, float t)
 	if (time_diff > d->max_duration)
 		time_diff = d->max_duration;
 	d->time_diff = time_diff;
-	dynamic_delay_text(d);
+	custom_delay_text(d);
 	check_size(d);
 }
 
-void dynamic_delay_activate(void *data)
+void custom_delay_activate(void *data)
 {
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 }
 
-void dynamic_delay_deactivate(void *data)
+void custom_delay_deactivate(void *data)
 {
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 }
 
-void dynamic_delay_show(void *data)
+void custom_delay_show(void *data)
 {
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 }
 
-void dynamic_delay_hide(void *data)
+void custom_delay_hide(void *data)
 {
-	struct dynamic_delay_info *d = data;
+	struct custom_delay_info *d = data;
 }
 
-struct obs_source_info dynamic_delay_filter = {
-	.id = "dynamic_delay_filter",
+struct obs_source_info custom_delay_filter = {
+	.id = "custom_delay_filter",
 	.type = OBS_SOURCE_TYPE_FILTER,
 	.output_flags = OBS_OUTPUT_VIDEO,
-	.get_name = dynamic_delay_get_name,
-	.create = dynamic_delay_create,
-	.destroy = dynamic_delay_destroy,
-	.load = dynamic_delay_load,
-	.update = dynamic_delay_update,
-	.video_render = dynamic_delay_video_render,
-	.get_properties = dynamic_delay_properties,
-	.get_defaults = dynamic_delay_defaults,
-	.video_tick = dynamic_delay_tick,
-	.activate = dynamic_delay_activate,
-	.deactivate = dynamic_delay_deactivate,
-	.show = dynamic_delay_show,
-	.hide = dynamic_delay_hide,
+	.get_name = custom_delay_get_name,
+	.create = custom_delay_create,
+	.destroy = custom_delay_destroy,
+	.load = custom_delay_load,
+	.update = custom_delay_update,
+	.video_render = custom_delay_video_render,
+	.get_properties = custom_delay_properties,
+	.get_defaults = custom_delay_defaults,
+	.video_tick = custom_delay_tick,
+	.activate = custom_delay_activate,
+	.deactivate = custom_delay_deactivate,
+	.show = custom_delay_show,
+	.hide = custom_delay_hide,
 };
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_AUTHOR("Metabig");
-OBS_MODULE_USE_DEFAULT_LOCALE("dynamic-delay", "en-US")
+OBS_MODULE_USE_DEFAULT_LOCALE("custom-delay", "en-US")
 MODULE_EXPORT const char *obs_module_description(void)
 {
 	return obs_module_text("Description");
@@ -595,11 +516,11 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 MODULE_EXPORT const char *obs_module_name(void)
 {
-	return obs_module_text("DynamicDelay");
+	return obs_module_text("customDelay");
 }
 
 bool obs_module_load(void)
 {
-	obs_register_source(&dynamic_delay_filter);
+	obs_register_source(&custom_delay_filter);
 	return true;
 }

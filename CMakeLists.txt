@@ -1,11 +1,11 @@
-project(dynamic-delay VERSION 0.1.2)
-set(PROJECT_FULL_NAME "Dynamic Delay")
+project(dynamic-delay VERSION 0.0.1)
+set(PROJECT_FULL_NAME "Custom Delay")
 
-set(dynamic-delay_HEADERS
-	dynamic-delay.h
+set(custom-delay_HEADERS
+	custom-delay.h
 	easing.h)
-set(dynamic-delay_SOURCES
-	dynamic-delay.c
+set(custom-delay_SOURCES
+	custom-delay.c
 	easing.c)
 
 if(WIN32)
@@ -23,11 +23,11 @@ if(WIN32)
 		dynamic-delay.rc)
 endif()
 
-add_library(dynamic-delay MODULE
-	${dynamic-delay_HEADERS}
-	${dynamic-delay_SOURCES})
-target_link_libraries(dynamic-delay
+add_library(custom-delay MODULE
+	${custom-delay_HEADERS}
+	${custom-delay_SOURCES})
+target_link_libraries(custom-delay
 	libobs)
 
-set_target_properties(dynamic-delay PROPERTIES FOLDER "plugins/exeldro")
-install_obs_plugin_with_data(dynamic-delay data)
+set_target_properties(custom-delay PROPERTIES FOLDER "plugins/metabig")
+install_obs_plugin_with_data(custom-delay data)
