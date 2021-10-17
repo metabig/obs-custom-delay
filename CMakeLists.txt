@@ -2,11 +2,9 @@ project(dynamic-delay VERSION 0.0.1)
 set(PROJECT_FULL_NAME "Custom Delay")
 
 set(custom-delay_HEADERS
-	custom-delay.h
-	easing.h)
+	custom-delay.h)
 set(custom-delay_SOURCES
-	custom-delay.c
-	easing.c)
+	custom-delay.c)
 
 if(WIN32)
 	get_filename_component(ISS_FILES_DIR "${CMAKE_BINARY_DIR}\\..\\package" ABSOLUTE)

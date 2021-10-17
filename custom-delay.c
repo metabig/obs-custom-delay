@@ -3,7 +3,6 @@
 #include <util/dstr.h>
 #include <util/base.h>
 #include "custom-delay.h"
-#include "easing.h"
 #include <stdio.h>
 
 struct frame {
@@ -20,24 +19,13 @@ struct custom_delay_info {
 	bool hotkeys_loaded;
 	double max_duration;
 	double speed;
-	double start_speed;
 	double target_speed;
-
-	double slow_forward_speed;
-	double fast_forward_speed;
-	double slow_backward_speed;
-	double fast_backward_speed;
 
 	uint32_t cx;
 	uint32_t cy;
 	bool processed_frame;
 	double time_diff;
 	bool target_valid;
-
-	uint32_t easing;
-	float easing_duration;
-	float easing_max_duration;
-	uint64_t easing_started;
 
 	char *text_source_name;
 	char *text_format;
@@ -58,53 +46,10 @@ static void replace_text(struct dstr *str, size_t pos, size_t len,
 	dstr_free(&back);
 }
 
-static void custom_delay_text(struct custom_delay_info *c)
-{
-	if (!c->text_source_name || !strlen(c->text_source_name) ||
-	    !c->text_format)
-		return;
-	obs_source_t *s = obs_get_source_by_name(c->text_source_name);
-	if (!s)
-		return;
-
-	struct dstr sf;
-	size_t pos = 0;
-	struct dstr buffer;
-	dstr_init(&buffer);
-	dstr_init_copy(&sf, c->text_format);
-	while (pos < sf.len) {
-		const char *cmp = sf.array + pos;
-		if (astrcmp_n(cmp, "%SPEED%", 7) == 0) {
-			dstr_printf(&buffer, "%.1f", c->speed * 100.0);
-			dstr_cat_ch(&buffer, '%');
-			replace_text(&sf, pos, 7, buffer.array);
-			pos += buffer.len;
-		} else if (astrcmp_n(cmp, "%TARGET%", 8) == 0) {
-			dstr_printf(&buffer, "%.1f", c->target_speed * 100.0);
-			dstr_cat_ch(&buffer, '%');
-			replace_text(&sf, pos, 8, buffer.array);
-			pos += buffer.len;
-		} else if (astrcmp_n(cmp, "%TIME%", 6) == 0) {
-			dstr_printf(&buffer, "%.1f", c->time_diff);
-			replace_text(&sf, pos, 6, buffer.array);
-			pos += buffer.len;
-		} else {
-			pos++;
-		}
-	}
-	obs_data_t *settings = obs_data_create();
-	obs_data_set_string(settings, "text", sf.array);
-	obs_source_update(s, settings);
-	obs_data_release(settings);
-	dstr_free(&sf);
-	dstr_free(&buffer);
-	obs_source_release(s);
-}
-
 static const char *custom_delay_get_name(void *type_data)
 {
 	UNUSED_PARAMETER(type_data);
-	return obs_module_text("CustomDelay");
+	return obs_module_text("Custom Delay");
 }
 
 static void free_textures(struct custom_delay_info *f)
@@ -128,37 +73,6 @@ static void custom_delay_update(void *data, obs_data_t *settings)
 		free_textures(d);
 	}
 	d->max_duration = duration;
-	d->easing = obs_data_get_int(settings, S_EASING);
-	d->easing_max_duration =
-		(float)obs_data_get_double(settings, S_EASING_DURATION);
-	d->slow_forward_speed =
-		obs_data_get_double(settings, S_SLOW_FORWARD) / 100.0;
-	d->fast_forward_speed =
-		obs_data_get_double(settings, S_FAST_FORWARD) / 100.0;
-	d->slow_backward_speed =
-		obs_data_get_double(settings, S_SLOW_BACKWARD) / 100.0;
-	d->fast_backward_speed =
-		obs_data_get_double(settings, S_FAST_BACKWARD) / 100.0;
-
-	const char *text_source = obs_data_get_string(settings, S_TEXT_SOURCE);
-	if (d->text_source_name) {
-		if (strcmp(d->text_source_name, text_source) != 0) {
-			bfree(d->text_source_name);
-			d->text_source_name = bstrdup(text_source);
-		}
-	} else {
-		d->text_source_name = bstrdup(text_source);
-	}
-
-	const char *text_format = obs_data_get_string(settings, S_TEXT_FORMAT);
-	if (d->text_format) {
-		if (strcmp(d->text_format, text_format) != 0) {
-			bfree(d->text_format);
-			d->text_format = bstrdup(text_format);
-		}
-	} else {
-		d->text_format = bstrdup(text_format);
-	}
 }
 
 static void *custom_delay_create(obs_data_t *settings, obs_source_t *source)
@@ -168,7 +82,6 @@ static void *custom_delay_create(obs_data_t *settings, obs_source_t *source)
 	d->source = source;
 	d->speed = 1.0;
 	d->target_speed = 1.0;
-	d->start_speed = 1.0;
 	custom_delay_update(d, settings);
 	return d;
 }
@@ -192,11 +105,8 @@ void custom_delay_skip_begin_hotkey(void *data, obs_hotkey_id id,
 	if (!pressed)
 		return;
 	struct custom_delay_info *d = data;
-	if (d->start_speed < 1.0 || d->speed < 1.0) {
-		d->start_speed = 1.0;
-		d->target_speed = 1.0;
-		d->easing_started = 0;
-	}
+	d->target_speed = 1.0;
+	
 	d->time_diff = d->max_duration;
 }
 
@@ -206,11 +116,8 @@ void custom_delay_skip_end_hotkey(void *data, obs_hotkey_id id,
 	if (!pressed)
 		return;
 	struct custom_delay_info *d = data;
-	if (d->start_speed > 1.0 || d->speed > 1.0) {
-		d->start_speed = 1.0;
-		d->target_speed = 1.0;
-		d->easing_started = 0;
-	}
+	d->target_speed = 1.0;
+	
 	d->time_diff = 0;
 }
 
@@ -406,56 +313,7 @@ static void custom_delay_tick(void *data, float t)
 	if (!d->hotkeys_loaded)
 		custom_delay_load_hotkeys(data);
 	d->processed_frame = false;
-	if (d->speed != d->target_speed) {
-		const uint64_t ts = obs_get_video_frame_time();
-		if (!d->easing_started)
-			d->easing_started = ts;
-		const double duration =
-			(double)(ts - d->easing_started) / 1000000000.0;
-		if (duration > d->easing_max_duration ||
-		    d->easing_max_duration <= 0.0) {
-			d->speed = d->target_speed;
-		} else {
-			double t2 = duration / d->easing_max_duration;
-			if (d->easing == EASING_QUADRATIC) {
-				t2 = QuadraticEaseInOut(t2);
-			} else if (d->easing == EASING_CUBIC) {
-				t2 = CubicEaseInOut(t2);
-			} else if (d->easing == EASING_QUARTIC) {
-				t2 = QuarticEaseInOut(t2);
-			} else if (d->easing == EASING_QUINTIC) {
-				t2 = QuinticEaseInOut(t2);
-			} else if (d->easing == EASING_SINE) {
-				t2 = SineEaseInOut(t2);
-			} else if (d->easing == EASING_CIRCULAR) {
-				t2 = CircularEaseInOut(t2);
-			} else if (d->easing == EASING_EXPONENTIAL) {
-				t2 = ExponentialEaseInOut(t2);
-			} else if (d->easing == EASING_ELASTIC) {
-				t2 = ElasticEaseInOut(t2);
-			} else if (d->easing == EASING_BOUNCE) {
-				t2 = BounceEaseInOut(t2);
-			} else if (d->easing == EASING_BACK) {
-				t2 = BackEaseInOut(t2);
-			}
-			d->speed = d->start_speed +
-				   (d->target_speed - d->start_speed) * t2;
-		}
-	} else if (d->easing_started) {
-		d->easing_started = 0;
-	}
-	if (d->speed > 1.0 && d->target_speed > 1.0 &&
-	    d->time_diff < d->easing_max_duration / 2.0) {
-		d->start_speed = d->speed;
-		d->target_speed = 1.0;
-		d->easing_started = 0;
-	} else if (d->speed < 1.0 && d->target_speed < 1.0 &&
-		   d->max_duration - d->time_diff <
-			   d->easing_max_duration / 2.0) {
-		d->start_speed = d->speed;
-		d->target_speed = 1.0;
-		d->easing_started = 0;
-	}
+	
 	double time_diff = d->time_diff;
 	time_diff += (1.0 - d->speed) * t;
 	if (time_diff < 0.0)
@@ -463,7 +321,6 @@ static void custom_delay_tick(void *data, float t)
 	if (time_diff > d->max_duration)
 		time_diff = d->max_duration;
 	d->time_diff = time_diff;
-	custom_delay_text(d);
 	check_size(d);
 }
 
