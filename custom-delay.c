@@ -19,32 +19,13 @@ struct custom_delay_info {
 	bool hotkeys_loaded;
 	double max_duration;
 	double speed;
-	double target_speed;
 
 	uint32_t cx;
 	uint32_t cy;
 	bool processed_frame;
 	double time_diff;
 	bool target_valid;
-
-	char *text_source_name;
-	char *text_format;
 };
-
-static void replace_text(struct dstr *str, size_t pos, size_t len,
-			 const char *new_text)
-{
-	struct dstr front = {0};
-	struct dstr back = {0};
-
-	dstr_left(&front, str, pos);
-	dstr_right(&back, str, pos + len);
-	dstr_copy_dstr(str, &front);
-	dstr_cat(str, new_text);
-	dstr_cat_dstr(str, &back);
-	dstr_free(&front);
-	dstr_free(&back);
-}
 
 static const char *custom_delay_get_name(void *type_data)
 {
@@ -77,11 +58,9 @@ static void custom_delay_update(void *data, obs_data_t *settings)
 
 static void *custom_delay_create(obs_data_t *settings, obs_source_t *source)
 {
-	struct custom_delay_info *d =
-		bzalloc(sizeof(struct custom_delay_info));
+	struct custom_delay_info *d = bzalloc(sizeof(struct custom_delay_info));
 	d->source = source;
 	d->speed = 1.0;
-	d->target_speed = 1.0;
 	custom_delay_update(d, settings);
 	return d;
 }
@@ -92,10 +71,7 @@ static void custom_delay_destroy(void *data)
 	obs_hotkey_unregister(c->skip_begin_hotkey);
 	obs_hotkey_unregister(c->skip_end_hotkey);
 	free_textures(c);
-	if (c->text_source_name)
-		bfree(c->text_source_name);
-	if (c->text_format)
-		bfree(c->text_format);
+
 	bfree(c);
 }
 
@@ -105,7 +81,6 @@ void custom_delay_skip_begin_hotkey(void *data, obs_hotkey_id id,
 	if (!pressed)
 		return;
 	struct custom_delay_info *d = data;
-	d->target_speed = 1.0;
 	
 	d->time_diff = d->max_duration;
 }
@@ -115,9 +90,7 @@ void custom_delay_skip_end_hotkey(void *data, obs_hotkey_id id,
 {
 	if (!pressed)
 		return;
-	struct custom_delay_info *d = data;
-	d->target_speed = 1.0;
-	
+	struct custom_delay_info *d = data;	
 	d->time_diff = 0;
 }
 
@@ -127,10 +100,10 @@ static void custom_delay_load_hotkeys(void *data)
 	obs_source_t *parent = obs_filter_get_parent(d->source);
 	if (parent) {
 		d->skip_begin_hotkey = obs_hotkey_register_source(
-			parent, "skip_begin", obs_module_text("SkipBegin"),
+			parent, "skip_begin", obs_module_text("SkipBegin*"),
 			custom_delay_skip_begin_hotkey, data);
 		d->skip_end_hotkey = obs_hotkey_register_source(
-			parent, "skip_end", obs_module_text("SkipEnd"),
+			parent, "skip_end", obs_module_text("SkipEnd*"),
 			custom_delay_skip_end_hotkey, data);
 		d->hotkeys_loaded = true;
 	}
@@ -256,25 +229,11 @@ static void custom_delay_video_render(void *data, gs_effect_t *effect)
 	d->processed_frame = true;
 }
 
-static bool custom_delay_text_source_modified(obs_properties_t *props,
-					       obs_property_t *property,
-					       obs_data_t *data)
-{
-	const char *source_name = obs_data_get_string(data, S_TEXT_SOURCE);
-	bool text_source = false;
-	if (source_name && strlen(source_name)) {
-		text_source = true;
-	}
-	obs_property_t *prop = obs_properties_get(props, S_TEXT_FORMAT);
-	obs_property_set_visible(prop, text_source);
-	return true;
-}
-
 static obs_properties_t *custom_delay_properties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
 	obs_property_t *p = obs_properties_add_float(
-		ppts, S_DURATION, obs_module_text("Duration"), 0.0, 10000.0,
+		ppts, S_DURATION, obs_module_text("Duratioo0n"), 0.0, 10000.0,
 		1.0);
 	obs_property_float_set_suffix(p, "s");
 	return ppts;
@@ -315,7 +274,6 @@ static void custom_delay_tick(void *data, float t)
 	d->processed_frame = false;
 	
 	double time_diff = d->time_diff;
-	time_diff += (1.0 - d->speed) * t;
 	if (time_diff < 0.0)
 		time_diff = 0.0;
 	if (time_diff > d->max_duration)
