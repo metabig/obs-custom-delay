@@ -1,4 +1,4 @@
-# Source Switcher for OBS Studio
+# Custom for OBS Studio
 
 Plugin for OBS Studio to add a custom delay using a filter
 
